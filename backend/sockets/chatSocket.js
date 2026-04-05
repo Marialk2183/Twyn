@@ -141,6 +141,52 @@ module.exports = (io) => {
       socket.to(roomId).emit('peer-typing', { isTyping: Boolean(isTyping) });
     });
 
+    // ── Message Reaction (relay only — not stored) ────────────────────────────
+    socket.on('message-reaction', ({ roomId, messageId, emoji }) => {
+      if (!isValidRoomId(roomId) || socket.roomId !== roomId) return;
+      if (typeof messageId !== 'string' || messageId.length > 64) return;
+      const VALID = ['👍','❤️','😂','😮','😢','🔥'];
+      if (!VALID.includes(emoji)) return;
+      socket.to(roomId).emit('message-reaction', { messageId, emoji });
+    });
+
+    // ── Seen Receipt ──────────────────────────────────────────────────────────
+    socket.on('message-seen', ({ roomId, messageId }) => {
+      if (!isValidRoomId(roomId) || socket.roomId !== roomId) return;
+      if (typeof messageId !== 'string' || messageId.length > 64) return;
+      socket.to(roomId).emit('message-seen', { messageId });
+    });
+
+    // ── WebRTC Signaling ──────────────────────────────────────────────────────
+    socket.on('call-offer', ({ roomId, offer, callType }) => {
+      if (!isValidRoomId(roomId) || socket.roomId !== roomId) return;
+      if (!['audio', 'video'].includes(callType)) return;
+      if (!offer || typeof offer !== 'object') return;
+      socket.to(roomId).emit('call-offer', { offer, callType });
+    });
+
+    socket.on('call-answer', ({ roomId, answer }) => {
+      if (!isValidRoomId(roomId) || socket.roomId !== roomId) return;
+      if (!answer || typeof answer !== 'object') return;
+      socket.to(roomId).emit('call-answer', { answer });
+    });
+
+    socket.on('ice-candidate', ({ roomId, candidate }) => {
+      if (!isValidRoomId(roomId) || socket.roomId !== roomId) return;
+      if (!candidate || typeof candidate !== 'object') return;
+      socket.to(roomId).emit('ice-candidate', { candidate });
+    });
+
+    socket.on('call-end', ({ roomId }) => {
+      if (!isValidRoomId(roomId) || socket.roomId !== roomId) return;
+      socket.to(roomId).emit('call-end');
+    });
+
+    socket.on('call-rejected', ({ roomId }) => {
+      if (!isValidRoomId(roomId) || socket.roomId !== roomId) return;
+      socket.to(roomId).emit('call-rejected');
+    });
+
     // ── Disconnect ───────────────────────────────────────────────────────────
     socket.on('disconnect', async (reason) => {
       console.log(`[Socket] Disconnected: ${socket.id} (${reason})`);
@@ -164,7 +210,8 @@ module.exports = (io) => {
           room.isLocked = false;
           await room.save();
           io.to(socket.roomId).emit('peer-disconnected', {
-            userCount: room.users.length
+            userCount: room.users.length,
+            lastSeen: new Date().toISOString()
           });
         }
       } catch (err) {

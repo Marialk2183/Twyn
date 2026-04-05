@@ -67,12 +67,12 @@ app.use(express.static(path.join(__dirname, '../frontend'), {
 // ── REST API routes ──────────────────────────────────────────────────────────
 app.use('/api/rooms', roomRoutes);
 
-// Serve room page for any /room/:id URL (client-side handles validation)
+// Serve room page for any /room/:id URL — redirect lowercase to uppercase
 app.get('/room/:roomId', (req, res) => {
-  const { roomId } = req.params;
-  // Validate room ID format before serving
-  if (!/^[A-Z0-9]{6}$/.test(roomId)) {
-    return res.status(400).sendFile(path.join(__dirname, '../frontend/404.html'));
+  const upper = req.params.roomId.toUpperCase();
+  if (req.params.roomId !== upper) return res.redirect(301, `/room/${upper}`);
+  if (!/^[A-Z0-9]{6}$/.test(upper)) {
+    return res.status(404).sendFile(path.join(__dirname, '../frontend/404.html'));
   }
   res.sendFile(path.join(__dirname, '../frontend/room.html'));
 });

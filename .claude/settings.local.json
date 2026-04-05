@@ -10,7 +10,11 @@
       "Bash(netstat -ano)",
       "Bash(tasklist:*)",
       "Bash(powershell -Command \"Get-Process -Id 4540 | Select-Object Name, Id, Path\")",
-      "Bash(powershell:*)"
+      "Bash(powershell:*)",
+      "Bash(node -e ':*)",
+      "Bash(node --check frontend/js/chat.js)",
+      "Bash(node --check frontend/js/app.js)",
+      "Bash(node -e \"require\\('./backend/sockets/chatSocket'\\)\")"
     ]
   }
 }
