@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(node --check server.js)",
+      "Bash(node --check controllers/roomController.js)",
+      "Bash(node --check sockets/chatSocket.js)",
+      "Bash(node --check routes/room.js)",
+      "Bash(mongod --version)",
+      "Bash(netstat -ano)",
+      "Bash(tasklist:*)",
+      "Bash(powershell -Command \"Get-Process -Id 4540 | Select-Object Name, Id, Path\")",
+      "Bash(powershell:*)"
+    ]
+  }
+}
