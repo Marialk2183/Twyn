@@ -355,12 +355,9 @@
 
   // ── Audio Player Builder ──────────────────────────────────────────────────
   function createAudioPlayer(base64Audio, mimeType) {
-    const binary = atob(base64Audio);
-    const bytes  = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    const blob   = new Blob([bytes], { type: mimeType || 'audio/webm' });
-    const url    = URL.createObjectURL(blob);
-    const audio  = new Audio(url);
+    // Build a data URL directly — no manual binary decoding needed
+    const src   = `data:${mimeType || 'audio/webm'};base64,${base64Audio}`;
+    const audio = new Audio(src);
 
     const player = document.createElement('div');
     player.className = 'audio-player';
@@ -394,10 +391,26 @@
       fill.style.width = '0%';
       if (isFinite(audio.duration)) durEl.textContent = fmtAudioTime(audio.duration);
     });
+    audio.addEventListener('error', () => {
+      durEl.textContent = 'Error';
+      playBtn.disabled  = true;
+    });
 
-    playBtn.addEventListener('click', () => {
-      if (audio.paused) { audio.play(); playBtn.textContent = '⏸'; playBtn.classList.add('playing'); }
-      else              { audio.pause(); playBtn.textContent = '▶'; playBtn.classList.remove('playing'); }
+    playBtn.addEventListener('click', async () => {
+      if (audio.paused) {
+        try {
+          await audio.play();
+          playBtn.textContent = '⏸';
+          playBtn.classList.add('playing');
+        } catch (err) {
+          console.error('[AudioPlayer] play() failed:', err);
+          showToast('Could not play voice message.');
+        }
+      } else {
+        audio.pause();
+        playBtn.textContent = '▶';
+        playBtn.classList.remove('playing');
+      }
     });
     progress.addEventListener('click', (e) => {
       if (!audio.duration) return;
@@ -652,12 +665,12 @@
 
   async function sendVoiceMessage(blob, mimeType) {
     try {
-      // Blob → base64
-      const arrayBuffer = await blob.arrayBuffer();
-      const uint8 = new Uint8Array(arrayBuffer);
-      let binary = '';
-      for (let i = 0; i < uint8.length; i++) binary += String.fromCharCode(uint8[i]);
-      const base64Audio = btoa(binary);
+      const base64Audio = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result.split(',')[1]); // strip "data:...;base64,"
+        reader.onerror   = reject;
+        reader.readAsDataURL(blob);
+      });
 
       const { encryptedContent, iv } = await CryptoHelper.encrypt(base64Audio);
       socket.emit('send-message', { roomId, encryptedContent, iv, messageType: 'audio', mimeType });
