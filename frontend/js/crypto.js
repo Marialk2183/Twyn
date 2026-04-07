@@ -137,17 +137,19 @@ const CryptoHelper = (() => {
   // ── Private Utilities ──────────────────────────────────────────────────────
 
   function _arrayBufferToBase64(buffer) {
-    const bytes = new Uint8Array(buffer);
-    let binary = '';
-    for (let i = 0; i < bytes.byteLength; i++) {
-      binary += String.fromCharCode(bytes[i]);
+    // Chunked to avoid slow string concatenation on large buffers (e.g. encrypted audio)
+    const bytes  = new Uint8Array(buffer);
+    const CHUNK  = 8192;
+    let binary   = '';
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
     }
     return btoa(binary);
   }
 
   function _base64ToArrayBuffer(base64) {
     const binary = atob(base64);
-    const bytes = new Uint8Array(binary.length);
+    const bytes  = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) {
       bytes[i] = binary.charCodeAt(i);
     }

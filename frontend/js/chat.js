@@ -354,10 +354,24 @@
   }
 
   // ── Audio Player Builder ──────────────────────────────────────────────────
+  function base64ToObjectUrl(base64, mimeType) {
+    // Chunked decode — avoids stack overflow on large audio files
+    const raw    = atob(base64);
+    const chunks = [];
+    const CHUNK  = 1024;
+    for (let i = 0; i < raw.length; i += CHUNK) {
+      const slice = raw.slice(i, i + CHUNK);
+      const bytes = new Uint8Array(slice.length);
+      for (let j = 0; j < slice.length; j++) bytes[j] = slice.charCodeAt(j);
+      chunks.push(bytes);
+    }
+    const blob = new Blob(chunks, { type: mimeType || 'audio/webm' });
+    return URL.createObjectURL(blob);
+  }
+
   function createAudioPlayer(base64Audio, mimeType) {
-    // Build a data URL directly — no manual binary decoding needed
-    const src   = `data:${mimeType || 'audio/webm'};base64,${base64Audio}`;
-    const audio = new Audio(src);
+    const url   = base64ToObjectUrl(base64Audio, mimeType);
+    const audio = new Audio(url);
 
     const player = document.createElement('div');
     player.className = 'audio-player';
@@ -391,9 +405,11 @@
       fill.style.width = '0%';
       if (isFinite(audio.duration)) durEl.textContent = fmtAudioTime(audio.duration);
     });
-    audio.addEventListener('error', () => {
+    audio.addEventListener('error', (e) => {
+      console.error('[AudioPlayer] decode error:', e, audio.error);
       durEl.textContent = 'Error';
       playBtn.disabled  = true;
+      URL.revokeObjectURL(url);
     });
 
     playBtn.addEventListener('click', async () => {
@@ -640,8 +656,11 @@
       recordingTimeEl.textContent = '0:00';
 
       if (audioChunks.length === 0) return;
-      const blob = new Blob(audioChunks, { type: mimeType || 'audio/webm' });
-      await sendVoiceMessage(blob, mimeType || 'audio/webm');
+
+      // Use the actual MIME type the browser chose (more reliable than our guess)
+      const actualMime = mediaRecorder.mimeType || mimeType || 'audio/webm';
+      const blob = new Blob(audioChunks, { type: actualMime });
+      await sendVoiceMessage(blob, actualMime);
     };
 
     mediaRecorder.start(100);
