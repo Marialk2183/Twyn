@@ -49,10 +49,11 @@
   let currentCallType = null;
   let callTimer       = null;
   let callSeconds     = 0;
-  let isMuted         = false;
-  let isCameraOff     = false;
-  let incomingOffer   = null;
-  let incomingType    = null;
+  let isMuted          = false;
+  let isCameraOff      = false;
+  let incomingOffer    = null;
+  let incomingType     = null;
+  let currentFacingMode = 'user'; // 'user' = front, 'environment' = back
 
   // ── Audio Context (lazy) ──────────────────────────────────────────────────
   let audioCtx = null;
@@ -119,6 +120,7 @@
   const videoMuteBtn      = document.getElementById('video-mute-btn');
   const videoEndBtn       = document.getElementById('video-end-btn');
   const videoCameraBtn    = document.getElementById('video-camera-btn');
+  const videoFlipBtn      = document.getElementById('video-flip-btn');
 
   if (roomIdDisplay) roomIdDisplay.textContent = roomId;
 
@@ -482,6 +484,7 @@
   voiceEndBtn.addEventListener('click',  () => endCall(true));
   videoMuteBtn.addEventListener('click', toggleMute);
   videoCameraBtn.addEventListener('click', toggleCamera);
+  videoFlipBtn.addEventListener('click', flipCamera);
   videoEndBtn.addEventListener('click',  () => endCall(true));
 
   // ── WebRTC: Start Outgoing Call ────────────────────────────────────────────
@@ -623,7 +626,7 @@
     if (peerConnection) { peerConnection.close(); peerConnection = null; }
     if (callTimer)      { clearInterval(callTimer); callTimer = null; }
 
-    callSeconds = 0; currentCallType = null; isMuted = false; isCameraOff = false;
+    callSeconds = 0; currentCallType = null; isMuted = false; isCameraOff = false; currentFacingMode = 'user';
     remoteAudioEl.srcObject = null;
     remoteVideoEl.srcObject = null;
     localVideoEl.srcObject  = null;
@@ -651,6 +654,46 @@
     isCameraOff = !isCameraOff;
     t.enabled = !isCameraOff;
     videoCameraBtn.classList.toggle('active', isCameraOff);
+  }
+
+  async function flipCamera() {
+    if (!localStream || currentCallType !== 'video') return;
+
+    currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+
+    let newStream;
+    try {
+      newStream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: { facingMode: currentFacingMode }
+      });
+    } catch {
+      showToast('Could not switch camera.');
+      currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user'; // revert
+      return;
+    }
+
+    const newVideoTrack = newStream.getVideoTracks()[0];
+
+    // Swap track in peer connection without renegotiation
+    if (peerConnection) {
+      const sender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+      if (sender) await sender.replaceTrack(newVideoTrack);
+    }
+
+    // Stop old video track and replace in localStream
+    localStream.getVideoTracks().forEach(t => t.stop());
+    localStream.removeTrack(localStream.getVideoTracks()[0]);
+    localStream.addTrack(newVideoTrack);
+
+    // Keep camera-off state consistent
+    newVideoTrack.enabled = !isCameraOff;
+
+    // Refresh local preview
+    localVideoEl.srcObject = null;
+    localVideoEl.srcObject = localStream;
+
+    videoFlipBtn.classList.toggle('active', currentFacingMode === 'environment');
   }
 
   function startCallTimer() {

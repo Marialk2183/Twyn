@@ -1085,6 +1085,8 @@ button { font-family: var(--font); cursor: pointer; border: none; outline: none;
 .video-ctrl-btn.mute.active   { background: var(--danger); }
 .video-ctrl-btn.camera { background: rgba(255,255,255,0.15); }
 .video-ctrl-btn.camera.active { background: var(--danger); }
+.video-ctrl-btn.flip-camera { background: rgba(255,255,255,0.15); }
+.video-ctrl-btn.flip-camera.active { background: var(--accent); }
 .video-ctrl-btn.end-call {
   background: linear-gradient(135deg, #ef4444, #dc2626);
   width: 60px; height: 60px;
