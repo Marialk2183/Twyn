@@ -1,0 +1,156 @@
+================================================================================
+                        LockChat — Secure 1-to-1 Private Chat App
+================================================================================
+
+PROJECT OVERVIEW
+----------------
+LockChat is a real-time, end-to-end encrypted private chat application where two
+users communicate over a unique 6-character room link. The server never sees
+plaintext messages — only encrypted ciphertext is transmitted and stored.
+
+Key Highlights:
+  - End-to-end encrypted messaging (server-blind)
+  - Ephemeral rooms auto-deleted after 24 hours via MongoDB TTL
+  - Max 2 users per room, enforced server-side
+  - Perfect Forward Secrecy — new encryption keys per session
+  - No login or account required
+
+
+TECH STACK
+----------
+
+FRONTEND
+  - HTML5 / CSS3 / Vanilla JavaScript (no frameworks)
+  - Web Crypto API (native browser cryptography — no third-party crypto libs)
+  - Socket.IO Client (v4) — real-time bidirectional communication
+  - WhatsApp-style dark theme UI (pure CSS)
+
+BACKEND
+  - Runtime:     Node.js (>=18.0.0)
+  - Framework:   Express.js (v4.18)
+  - Real-time:   Socket.IO (v4.7)
+  - Database:    MongoDB with Mongoose ODM (v8.3)
+  - Environment: dotenv
+
+SECURITY & MIDDLEWARE
+  - helmet          — HTTP security headers + Content Security Policy (CSP)
+  - express-rate-limit — API rate limiting on all routes
+  - xss             — XSS sanitization on server inputs
+  - CORS            — configured with cors package
+
+
+ENCRYPTION DETAILS
+------------------
+  Protocol:         ECDH (Elliptic Curve Diffie-Hellman) key exchange
+  Curve:            P-256 (NIST standard)
+  Symmetric Cipher: AES-256-GCM (authenticated encryption)
+  IV:               96-bit random, freshly generated per message
+  Key storage:      Private keys marked non-extractable (cannot be exported)
+  Server sees:      base64(ciphertext) + base64(IV) only — never plaintext
+  Forward Secrecy:  Yes — ephemeral keys, new pair generated on every page load
+
+
+CORE FEATURES
+-------------
+  - Real-time messaging via WebSockets (Socket.IO)
+  - ECDH key exchange on connect → AES-256-GCM encrypted messages
+  - Typing indicator (debounced)
+  - Online / offline peer status
+  - Auto-scroll to latest message
+  - Message history loaded and decrypted on room join
+  - Copy room link with one click
+  - Reconnect support using sessionStorage clientId (refresh-safe)
+  - Room + messages auto-deleted when both users disconnect
+  - 24-hour TTL auto-delete via MongoDB TTL indexes
+
+
+DATABASE SCHEMA
+---------------
+  Room:
+    - roomId     (String, 6 chars, uppercase alphanumeric, unique)
+    - users[]    (socketId, clientId, slotIndex)
+    - isLocked   (Boolean — true when 2 users joined)
+    - createdAt  (TTL: expires after 86400 seconds / 24 hours)
+
+  Message:
+    - roomId          (reference to Room)
+    - encryptedContent (base64 ciphertext)
+    - iv               (base64 initialization vector)
+    - sender           (clientId)
+    - createdAt        (TTL: expires after 24 hours)
+
+
+PROJECT STRUCTURE
+-----------------
+  MF_APP_CHATT/
+  ├── backend/
+  │   ├── server.js                  Express + Socket.IO entry point
+  │   ├── routes/room.js             REST: create/get room, fetch messages
+  │   ├── controllers/roomController.js
+  │   ├── models/
+  │   │   ├── Room.js                Room schema (TTL: 24h)
+  │   │   └── Message.js             Message schema (stores ciphertext only)
+  │   ├── sockets/chatSocket.js      Real-time chat and key exchange logic
+  │   └── package.json
+  └── frontend/
+      ├── index.html                 Landing page (create / join room)
+      ├── room.html                  Chat interface
+      ├── css/style.css              Dark theme UI
+      └── js/
+          ├── crypto.js              ECDH + AES-GCM (Web Crypto API)
+          ├── app.js                 Landing page logic
+          └── chat.js                Room chat logic
+
+
+SECURITY FEATURES SUMMARY
+--------------------------
+  Feature                   Implementation
+  ------------------------  -------------------------------------------------
+  End-to-End Encryption     ECDH key exchange + AES-256-GCM per message
+  Server-blind              Server stores only ciphertext + IV, never plaintext
+  Perfect Forward Secrecy   Ephemeral ECDH keys, new pair per session
+  Max 2 users               Enforced server-side via Socket.IO + MongoDB
+  Input validation          Regex + length checks on all server inputs
+  XSS prevention            textContent only (never innerHTML) for messages
+  Rate limiting             express-rate-limit on all API routes
+  HTTP security headers     Helmet.js with Content Security Policy
+  Auto-delete               MongoDB TTL indexes (24h for rooms + messages)
+  Reconnect support         clientId in sessionStorage survives page refresh
+
+
+DEPENDENCIES
+------------
+  Production:
+    express             ^4.18.2
+    socket.io           ^4.7.5
+    mongoose            ^8.3.4
+    helmet              ^7.1.0
+    cors                ^2.8.5
+    express-rate-limit  ^7.2.0
+    xss                 ^1.0.14
+    dotenv              ^16.4.5
+
+  Development:
+    nodemon             ^3.1.0
+
+
+HOW TO RUN LOCALLY
+------------------
+  Prerequisites: Node.js 18+, MongoDB (local or Atlas)
+
+  cd MF_APP_CHATT/backend
+  npm install
+  npm run dev         # development with auto-reload
+  # or
+  npm start           # production
+
+  Open: http://localhost:3000
+
+
+DEPLOYMENT OPTIONS
+------------------
+  - Render.com  (Root dir: backend, Start: npm start)
+  - Railway     (railway up)
+  - MongoDB Atlas for cloud database
+
+================================================================================
