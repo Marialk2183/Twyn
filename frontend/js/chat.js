@@ -12,9 +12,35 @@
   const REACTIONS          = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
   const STUN_SERVERS       = {
     iceServers: [
+      // ── STUN (discovers public IP, works for most home networks) ────────────
       { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' }
-    ]
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun3.l.google.com:19302' },
+      // ── TURN (relay fallback — required for mobile data, strict NAT, VPNs) ─
+      // Free relay via Open Relay Project (metered.ca)
+      {
+        urls: 'turn:openrelay.metered.ca:80',
+        username: 'openrelayproject',
+        credential: 'openrelayproject'
+      },
+      {
+        urls: 'turn:openrelay.metered.ca:443',
+        username: 'openrelayproject',
+        credential: 'openrelayproject'
+      },
+      {
+        urls: 'turn:openrelay.metered.ca:443?transport=tcp', // TCP fallback for firewalls blocking UDP
+        username: 'openrelayproject',
+        credential: 'openrelayproject'
+      },
+      {
+        urls: 'turn:openrelay.metered.ca:80?transport=tcp',
+        username: 'openrelayproject',
+        credential: 'openrelayproject'
+      }
+    ],
+    iceCandidatePoolSize: 10  // pre-gather ICE candidates for faster connection
   };
 
   // ── Room / Session ─────────────────────────────────────────────────────────
@@ -54,6 +80,13 @@
   let incomingOffer    = null;
   let incomingType     = null;
   let currentFacingMode = 'user'; // 'user' = front, 'environment' = back
+
+  // ── Voice Message State ───────────────────────────────────────────────────
+  let mediaRecorder    = null;
+  let audioChunks      = [];
+  let recordingTimer   = null;
+  let recordingSeconds = 0;
+  const MAX_RECORD_SEC = 60;
 
   // ── Audio Context (lazy) ──────────────────────────────────────────────────
   let audioCtx = null;
@@ -117,6 +150,11 @@
   const remoteVideoEl     = document.getElementById('remote-video');
   const localVideoEl      = document.getElementById('local-video');
   const remoteAudioEl     = document.getElementById('remote-audio');
+  const voiceMsgBtn       = document.getElementById('voice-msg-btn');
+  const voiceMsgIcon      = document.getElementById('voice-msg-icon');
+  const recordingBar      = document.getElementById('recording-bar');
+  const recordingTimeEl   = document.getElementById('recording-time');
+  const inputWrapper      = document.getElementById('input-wrapper');
   const videoMuteBtn      = document.getElementById('video-mute-btn');
   const videoEndBtn       = document.getElementById('video-end-btn');
   const videoCameraBtn    = document.getElementById('video-camera-btn');
@@ -315,15 +353,77 @@
     sound.react();
   }
 
+  // ── Audio Player Builder ──────────────────────────────────────────────────
+  function createAudioPlayer(base64Audio, mimeType) {
+    const binary = atob(base64Audio);
+    const bytes  = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const blob   = new Blob([bytes], { type: mimeType || 'audio/webm' });
+    const url    = URL.createObjectURL(blob);
+    const audio  = new Audio(url);
+
+    const player = document.createElement('div');
+    player.className = 'audio-player';
+
+    const playBtn = document.createElement('button');
+    playBtn.className   = 'audio-play-btn';
+    playBtn.textContent = '▶';
+
+    const progress = document.createElement('div');
+    progress.className = 'audio-progress';
+    const fill = document.createElement('div');
+    fill.className = 'audio-progress-fill';
+    progress.appendChild(fill);
+
+    const durEl = document.createElement('span');
+    durEl.className   = 'audio-duration';
+    durEl.textContent = '0:00';
+
+    audio.addEventListener('loadedmetadata', () => {
+      if (isFinite(audio.duration)) durEl.textContent = fmtAudioTime(audio.duration);
+    });
+    audio.addEventListener('timeupdate', () => {
+      if (audio.duration) {
+        fill.style.width = (audio.currentTime / audio.duration * 100) + '%';
+        durEl.textContent = fmtAudioTime(audio.currentTime);
+      }
+    });
+    audio.addEventListener('ended', () => {
+      playBtn.textContent = '▶';
+      playBtn.classList.remove('playing');
+      fill.style.width = '0%';
+      if (isFinite(audio.duration)) durEl.textContent = fmtAudioTime(audio.duration);
+    });
+
+    playBtn.addEventListener('click', () => {
+      if (audio.paused) { audio.play(); playBtn.textContent = '⏸'; playBtn.classList.add('playing'); }
+      else              { audio.pause(); playBtn.textContent = '▶'; playBtn.classList.remove('playing'); }
+    });
+    progress.addEventListener('click', (e) => {
+      if (!audio.duration) return;
+      const r = progress.getBoundingClientRect();
+      audio.currentTime = ((e.clientX - r.left) / r.width) * audio.duration;
+    });
+
+    player.appendChild(playBtn);
+    player.appendChild(progress);
+    player.appendChild(durEl);
+    return player;
+  }
+
+  function fmtAudioTime(sec) {
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60);
+    return `${m}:${String(s).padStart(2, '0')}`;
+  }
+
   // ── Render Message Bubble ─────────────────────────────────────────────────
   async function renderMessage(msg, isHistory) {
     const isMine = msg.senderIndex === mySlotIndex;
-    let text = '';
+    let decrypted = null;
     try {
-      text = await CryptoHelper.decrypt(msg.encryptedContent, msg.iv);
-    } catch {
-      text = '[Could not decrypt message]';
-    }
+      decrypted = await CryptoHelper.decrypt(msg.encryptedContent, msg.iv);
+    } catch { /* decrypted stays null */ }
 
     const wrapper = document.createElement('div');
     wrapper.className = `message-wrapper ${isMine ? 'mine' : 'theirs'}`;
@@ -336,7 +436,16 @@
     // Bubble
     const bubble = document.createElement('div');
     bubble.className = 'message-bubble';
-    bubble.textContent = text;
+
+    if (msg.messageType === 'audio') {
+      if (decrypted) {
+        bubble.appendChild(createAudioPlayer(decrypted, msg.mimeType));
+      } else {
+        bubble.textContent = '[Could not decrypt voice message]';
+      }
+    } else {
+      bubble.textContent = decrypted ?? '[Could not decrypt message]';
+    }
 
     // Reaction picker (hidden, shows on hover)
     const picker = document.createElement('div');
@@ -475,7 +584,91 @@
     }
   });
 
+  // ── Voice Messages ────────────────────────────────────────────────────────
+  function getSupportedMimeType() {
+    const types = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4'];
+    return types.find(t => MediaRecorder.isTypeSupported(t)) || '';
+  }
+
+  async function toggleRecording() {
+    if (mediaRecorder && mediaRecorder.state === 'recording') {
+      mediaRecorder.stop();
+    } else {
+      await startRecording();
+    }
+  }
+
+  async function startRecording() {
+    if (!chatEnabled) return;
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      showToast('Microphone access denied.');
+      return;
+    }
+
+    const mimeType = getSupportedMimeType();
+    mediaRecorder  = new MediaRecorder(stream, mimeType ? { mimeType } : {});
+    audioChunks    = [];
+
+    mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunks.push(e.data); };
+
+    mediaRecorder.onstop = async () => {
+      stream.getTracks().forEach(t => t.stop());
+      clearInterval(recordingTimer);
+      recordingSeconds = 0;
+
+      // Reset UI
+      recordingBar.classList.remove('active');
+      inputWrapper.style.display = '';
+      voiceMsgBtn.classList.remove('recording');
+      voiceMsgIcon.innerHTML = '<path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm-1 1.93V18H9v2h6v-2h-2v-2.07A7 7 0 0 0 19 11h-2a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.93z"/>';
+      recordingTimeEl.textContent = '0:00';
+
+      if (audioChunks.length === 0) return;
+      const blob = new Blob(audioChunks, { type: mimeType || 'audio/webm' });
+      await sendVoiceMessage(blob, mimeType || 'audio/webm');
+    };
+
+    mediaRecorder.start(100);
+
+    // Switch UI to recording mode
+    inputWrapper.style.display = 'none';
+    recordingBar.classList.add('active');
+    voiceMsgBtn.classList.add('recording');
+    // Change icon to stop square
+    voiceMsgIcon.innerHTML = '<path d="M6 6h12v12H6z"/>';
+
+    recordingSeconds = 0;
+    recordingTimer = setInterval(() => {
+      recordingSeconds++;
+      const m = Math.floor(recordingSeconds / 60);
+      const s = recordingSeconds % 60;
+      recordingTimeEl.textContent = `${m}:${String(s).padStart(2, '0')}`;
+      if (recordingSeconds >= MAX_RECORD_SEC) mediaRecorder.stop();
+    }, 1000);
+  }
+
+  async function sendVoiceMessage(blob, mimeType) {
+    try {
+      // Blob → base64
+      const arrayBuffer = await blob.arrayBuffer();
+      const uint8 = new Uint8Array(arrayBuffer);
+      let binary = '';
+      for (let i = 0; i < uint8.length; i++) binary += String.fromCharCode(uint8[i]);
+      const base64Audio = btoa(binary);
+
+      const { encryptedContent, iv } = await CryptoHelper.encrypt(base64Audio);
+      socket.emit('send-message', { roomId, encryptedContent, iv, messageType: 'audio', mimeType });
+    } catch (err) {
+      console.error('[VoiceMsg] Failed to send:', err);
+      showToast('Failed to send voice message.');
+    }
+  }
+
   // ── Call Button Events ────────────────────────────────────────────────────
+  voiceMsgBtn.addEventListener('click', toggleRecording);
   voiceCallBtn.addEventListener('click', () => startCall('audio'));
   videoCallBtn.addEventListener('click', () => startCall('video'));
   acceptCallBtn.addEventListener('click', acceptCall);
@@ -610,9 +803,25 @@
     };
 
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
+      if (pc.connectionState === 'failed') {
         endCall(false);
-        showToast('Call connection lost.');
+        showToast('Call connection failed. Try again.');
+      } else if (pc.connectionState === 'disconnected') {
+        // Attempt ICE restart before giving up
+        showToast('Call interrupted. Reconnecting…');
+        setTimeout(() => {
+          if (peerConnection && peerConnection.connectionState === 'disconnected') {
+            endCall(false);
+            showToast('Could not reconnect. Call ended.');
+          }
+        }, 6000);
+      }
+    };
+
+    pc.oniceconnectionstatechange = () => {
+      if (pc.iceConnectionState === 'failed') {
+        // Force ICE restart
+        pc.restartIce();
       }
     };
 
@@ -728,8 +937,9 @@
   // ── Helpers ────────────────────────────────────────────────────────────────
   function setChatEnabled(enabled) {
     chatEnabled = enabled;
-    inputEl.disabled  = !enabled;
-    sendBtn.disabled  = !enabled;
+    inputEl.disabled      = !enabled;
+    sendBtn.disabled      = !enabled;
+    voiceMsgBtn.disabled  = !enabled;
     voiceCallBtn.disabled = !(enabled && peerOnline);
     videoCallBtn.disabled = !(enabled && peerOnline);
     if (enabled) inputEl.focus();

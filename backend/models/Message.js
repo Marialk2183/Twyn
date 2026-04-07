@@ -11,7 +11,7 @@ const messageSchema = new mongoose.Schema({
   encryptedContent: {
     type: String,
     required: true,
-    maxlength: 20000 // ~15KB of ciphertext (generous for long messages)
+    maxlength: 250000 // text: ~15KB | audio: up to ~180KB (60s voice at Opus quality)
   },
   iv: {
     type: String,
@@ -22,6 +22,16 @@ const messageSchema = new mongoose.Schema({
     type: Number,
     required: true,
     enum: [0, 1]
+  },
+  messageType: {
+    type: String,
+    enum: ['text', 'audio'],
+    default: 'text'
+  },
+  mimeType: {
+    type: String,
+    maxlength: 64,
+    default: null
   },
   timestamp: {
     type: Date,

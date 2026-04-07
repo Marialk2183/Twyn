@@ -4,7 +4,7 @@ const Message = require('../models/Message');
 // Basic validation helpers (server never inspects plaintext content)
 const isValidRoomId = (id) => typeof id === 'string' && /^[A-Z0-9]{6}$/.test(id);
 const isValidClientId = (id) => typeof id === 'string' && id.length >= 8 && id.length <= 64;
-const isValidBase64 = (str, maxLen = 20000) =>
+const isValidBase64 = (str, maxLen = 250000) =>
   typeof str === 'string' && str.length > 0 && str.length <= maxLen && /^[A-Za-z0-9+/=]+$/.test(str);
 
 module.exports = (io) => {
@@ -51,7 +51,7 @@ module.exports = (io) => {
           // Send message history
           const messages = await Message.find(
             { roomId },
-            { encryptedContent: 1, iv: 1, senderIndex: 1, timestamp: 1 }
+            { encryptedContent: 1, iv: 1, senderIndex: 1, messageType: 1, mimeType: 1, timestamp: 1 }
           ).sort({ timestamp: 1 }).limit(500).lean();
 
           socket.emit('message-history', messages);
@@ -87,7 +87,7 @@ module.exports = (io) => {
         // Send message history to new joiner
         const messages = await Message.find(
           { roomId },
-          { encryptedContent: 1, iv: 1, senderIndex: 1, timestamp: 1 }
+          { encryptedContent: 1, iv: 1, senderIndex: 1, messageType: 1, mimeType: 1, timestamp: 1 }
         ).sort({ timestamp: 1 }).limit(500).lean();
 
         socket.emit('message-history', messages);
@@ -106,11 +106,14 @@ module.exports = (io) => {
     });
 
     // ── Send Encrypted Message ───────────────────────────────────────────────
-    socket.on('send-message', async ({ roomId, encryptedContent, iv }) => {
+    socket.on('send-message', async ({ roomId, encryptedContent, iv, messageType, mimeType }) => {
       if (!isValidRoomId(roomId)) return;
       if (!isValidBase64(encryptedContent)) return;
       if (!isValidBase64(iv, 64)) return;
       if (socket.roomId !== roomId) return; // Must be in this room
+
+      const type = messageType === 'audio' ? 'audio' : 'text';
+      const mime = type === 'audio' && typeof mimeType === 'string' ? mimeType.slice(0, 64) : null;
 
       try {
         const message = new Message({
@@ -118,6 +121,8 @@ module.exports = (io) => {
           encryptedContent,
           iv,
           senderIndex: socket.slotIndex,
+          messageType: type,
+          mimeType: mime,
           timestamp: new Date()
         });
         await message.save();
@@ -128,6 +133,8 @@ module.exports = (io) => {
           encryptedContent,
           iv,
           senderIndex: socket.slotIndex,
+          messageType: type,
+          mimeType: mime,
           timestamp: message.timestamp
         });
       } catch (err) {

@@ -76,7 +76,7 @@
 
     <!-- ── Input Area ──────────────────────────────────────────────────────── -->
     <div class="chat-input-area">
-      <div class="input-wrapper">
+      <div class="input-wrapper" id="input-wrapper">
         <textarea
           id="message-input"
           placeholder="Message is encrypted before sending…"
@@ -86,6 +86,22 @@
           aria-label="Type a message"
         ></textarea>
       </div>
+
+      <!-- Recording bar — visible only while recording -->
+      <div id="recording-bar">
+        <div class="recording-dot"></div>
+        <span id="recording-time">0:00</span>
+        <span class="recording-limit">/ 1:00</span>
+      </div>
+
+      <!-- Mic button — toggles recording -->
+      <button id="voice-msg-btn" class="voice-msg-btn" disabled title="Voice message" aria-label="Record voice message">
+        <!-- mic icon (default) -->
+        <svg id="voice-msg-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm-1 1.93V18H9v2h6v-2h-2v-2.07A7 7 0 0 0 19 11h-2a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.93z"/>
+        </svg>
+      </button>
+
       <button id="send-btn" disabled aria-label="Send message">
         <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
           <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>

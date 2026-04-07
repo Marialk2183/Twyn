@@ -792,6 +792,99 @@ button { font-family: var(--font); cursor: pointer; border: none; outline: none;
 #send-btn:disabled { background: var(--text-muted); cursor: not-allowed; box-shadow: none; }
 #send-btn svg { width: 20px; height: 20px; fill: #06111a; position: relative; z-index: 1; }
 
+/* ── Voice message button ────────────────────────────────────────────────── */
+.voice-msg-btn {
+  width: 46px; height: 46px;
+  background: rgba(255,255,255,0.07);
+  border: 1px solid var(--glass-border);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.25s var(--ease);
+}
+.voice-msg-btn svg { width: 20px; height: 20px; fill: var(--text-secondary); transition: fill 0.2s; }
+.voice-msg-btn:hover:not(:disabled) { background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.2); }
+.voice-msg-btn:hover:not(:disabled) svg { fill: var(--text-primary); }
+.voice-msg-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.voice-msg-btn.recording {
+  background: rgba(239,68,68,0.15);
+  border-color: var(--danger);
+  animation: pulse-mic 1.2s ease-in-out infinite;
+}
+.voice-msg-btn.recording svg { fill: var(--danger); }
+@keyframes pulse-mic {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.4); }
+  50%       { box-shadow: 0 0 0 8px rgba(239,68,68,0); }
+}
+
+/* ── Recording bar ────────────────────────────────────────────────────────── */
+#recording-bar {
+  display: none;
+  flex: 1;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0 0.5rem;
+  color: var(--danger);
+  font-size: 0.9rem;
+}
+#recording-bar.active { display: flex; }
+.recording-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: var(--danger);
+  flex-shrink: 0;
+  animation: blink-dot 1s step-start infinite;
+}
+@keyframes blink-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+#recording-time { font-weight: 600; font-variant-numeric: tabular-nums; }
+.recording-limit { color: var(--text-muted); font-size: 0.78rem; }
+
+/* ── Audio message player ─────────────────────────────────────────────────── */
+.audio-player {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 200px;
+  padding: 0.1rem 0;
+}
+.audio-play-btn {
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.15);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.2s;
+  font-size: 13px;
+  color: #fff;
+}
+.audio-play-btn:hover { background: rgba(255,255,255,0.25); }
+.audio-play-btn.playing { background: var(--accent); color: #06111a; }
+.audio-progress {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255,255,255,0.18);
+  cursor: pointer;
+  position: relative;
+}
+.audio-progress-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--accent);
+  width: 0%;
+  pointer-events: none;
+}
+.audio-duration {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  min-width: 34px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ── Copy link bar ───────────────────────────────────────────────────────── */
 .copy-bar {
   display: flex;
